@@ -75,6 +75,9 @@ func NewServer(t *testing.T) (*httptest.Server, *store.Store) {
 	svc := ingest.New(s, stats.NewCache(), rdb, log)
 
 	srv := httptest.NewServer(httpapi.NewRouter(svc, log))
-	t.Cleanup(srv.Close)
+	t.Cleanup(func() {
+		srv.Close()
+		svc.Shutdown() // wait for in-flight recording goroutines
+	})
 	return srv, s
 }

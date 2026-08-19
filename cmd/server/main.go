@@ -60,4 +60,9 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Error("shutdown", "err", err)
 	}
+
+	// Wait for in-flight background recording goroutines to finish.
+	// This must happen after srv.Shutdown so no new work is accepted.
+	svc.Shutdown()
+	log.Info("all background work completed")
 }
