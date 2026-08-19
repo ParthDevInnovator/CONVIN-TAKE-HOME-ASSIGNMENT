@@ -23,20 +23,37 @@ func NewCache() *Cache {
 	return &Cache{m: make(map[string]*AccountStats)}
 }
 
-// Get returns a snapshot of an account's totals. Unknown accounts read as zero.
-func (c *Cache) Get(accountID string) AccountStats {
+// Get returns a snapshot of an account's totals and a boolean indicating
+// whether the account was present in the cache. On a miss the caller
+// should fall back to the durable store.
+func (c *Cache) Get(accountID string) (AccountStats, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	s, ok := c.m[accountID]
 	if !ok {
-		return AccountStats{}
+		return AccountStats{}, false
 	}
-	return *s
+	return *s, true
+}
+
+// Set populates the cache entry for an account. It is used to back-fill
+// the cache after a read-through from Postgres.
+func (c *Cache) Set(accountID string, st AccountStats) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.m[accountID] = &AccountStats{
+		CallCount:        st.CallCount,
+		TotalDurationSec: st.TotalDurationSec,
+	}
 }
 
 // Record folds one completed call into an account's running totals.
 func (c *Cache) Record(accountID string, durationSec int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	s, ok := c.m[accountID]
 	if !ok {
 		s = &AccountStats{}

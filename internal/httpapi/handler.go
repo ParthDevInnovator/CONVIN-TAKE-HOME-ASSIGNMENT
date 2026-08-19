@@ -38,7 +38,12 @@ func (h *Handler) postCallWebhook(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) getAccountStats(w http.ResponseWriter, r *http.Request) {
 	accountID := r.PathValue("account_id")
-	st := h.svc.Stats(accountID)
+	st, err := h.svc.Stats(r.Context(), accountID)
+	if err != nil {
+		h.log.Error("stats lookup failed", "account_id", accountID, "err", err)
+		writeError(w, http.StatusInternalServerError, "stats lookup failed")
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{

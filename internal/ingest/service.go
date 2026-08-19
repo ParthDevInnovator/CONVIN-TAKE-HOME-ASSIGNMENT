@@ -50,9 +50,31 @@ func (s *Service) Shutdown() {
 	s.wg.Wait()
 }
 
-// Stats returns the cached totals for an account.
-func (s *Service) Stats(accountID string) stats.AccountStats {
-	return s.cache.Get(accountID)
+// Stats returns the totals for an account. It serves from the in-memory
+// cache when possible and falls back to the durable Postgres aggregate
+// on a cache miss (e.g. after a deployment or process restart).
+func (s *Service) Stats(ctx context.Context, accountID string) (stats.AccountStats, error) {
+	if st, ok := s.cache.Get(accountID); ok {
+		return st, nil
+	}
+
+	// Cache miss — read the durable copy from Postgres.
+	durable, err := s.store.AccountStats(ctx, accountID)
+	if err != nil {
+		return stats.AccountStats{}, err
+	}
+
+	result := stats.AccountStats{
+		CallCount:        durable.CallCount,
+		TotalDurationSec: durable.TotalDurationSec,
+	}
+
+	// Back-fill the cache so subsequent reads are served from memory.
+	if result.CallCount > 0 || result.TotalDurationSec > 0 {
+		s.cache.Set(accountID, result)
+	}
+
+	return result, nil
 }
 
 // Ingest stores a delivery and kicks off processing.
